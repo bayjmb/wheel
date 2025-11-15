@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Magic App Control Panel</title>
     <style>
+        /* CSS is identical to the previous version... */
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             background-color: #f4f7f6;
@@ -196,11 +197,13 @@
         const setHatModeButton = document.getElementById('set-hat-mode');
         const setWheelModeButton = document.getElementById('set-wheel-mode');
 
-        // === STATE ===
+        // === STATE & COMMS ===
         let tricks = [];
-        const STORAGE_KEY_TRICKS = 'magic_tricks';
-        const STORAGE_KEY_MODE = 'magic_mode';
-        const STORAGE_KEY_ACTIVATE = 'magic_activate';
+        const STORAGE_KEY_TRICKS = 'magic_tricks_persistence'; // For this page only
+        let currentMode = 'hat';
+
+        // NEW: Connect to the Broadcast Channel
+        const channel = new BroadcastChannel('magic_app');
 
         // === CORE FUNCTIONS ===
 
@@ -210,12 +213,10 @@
                 trickListDiv.innerHTML = '<p style="padding: 15px; text-align: center; color: #888;">No tricks added yet.</p>';
                 return;
             }
-
             tricks.forEach(trick => {
                 const item = document.createElement('div');
                 item.className = 'trick-item';
-                item.dataset.id = trick.id; // This will be the UUID
-
+                item.dataset.id = trick.id;
                 item.innerHTML = `
                     <span class="name">${trick.name}</span>
                     <button class="vote-btn secondary" data-action="vote-down">-</button>
@@ -227,14 +228,9 @@
             });
         }
 
-        /**
-         * Adds a new trick to the state.
-         * @param {string} name - The name of the trick.
-         */
         function addTrick(name) {
             if (!name || name.trim() === '') return;
             tricks.push({
-                // FIX 3: Use crypto.randomUUID() for a guaranteed unique ID
                 id: crypto.randomUUID(),
                 name: name.trim(),
                 votes: 0
@@ -242,15 +238,22 @@
         }
         
         /**
-         * Saves the current 'tricks' array to localStorage.
+         * Saves state to its OWN localStorage and broadcasts to display
          */
         function syncState() {
+            // 1. Save for persistence
             localStorage.setItem(STORAGE_KEY_TRICKS, JSON.stringify(tricks));
-            console.log('Trick state synced');
+            
+            // 2. Broadcast to display
+            channel.postMessage({
+                type: 'update_tricks',
+                payload: tricks
+            });
+            console.log('State synced and broadcasted');
         }
 
         /**
-         * Loads state from localStorage on page load.
+         * Loads state from its OWN localStorage on page load.
          */
         function loadState() {
             const storedTricks = localStorage.getItem(STORAGE_KEY_TRICKS);
@@ -260,11 +263,7 @@
             renderTrickList();
         }
 
-        /**
-         * Helper to find a trick's index by its ID.
-         */
         function findTrickIndexById(id) {
-            // FIX 3: Use strict equality (===) since UUIDs are strings
             return tricks.findIndex(trick => trick.id === id);
         }
 
@@ -290,20 +289,15 @@
             syncState();
         });
 
-        // Handle clicks on the trick list (Vote Up/Down, Remove)
         trickListDiv.addEventListener('click', (e) => {
             const action = e.target.dataset.action;
             if (!action) return;
-
             const item = e.target.closest('.trick-item');
-            if (!item) return; // Click was not on an item
+            if (!item) return;
             
             const id = item.dataset.id;
             const index = findTrickIndexById(id);
-            if (index === -1) {
-                console.error("Could not find trick with ID:", id);
-                return; // ID not found, do nothing
-            }
+            if (index === -1) return;
 
             switch (action) {
                 case 'vote-up':
@@ -331,26 +325,39 @@
             }
         });
 
-        // --- NEW: Control Listeners ---
+        // --- NEW: Broadcast Listeners ---
 
-        // FEATURE 4: Activate Button
         activateButton.addEventListener('click', () => {
-            console.log('Activating display...');
-            // Set a timestamp to signal a "new" event
-            localStorage.setItem(STORAGE_KEY_ACTIVATE, Date.now());
+            console.log('Broadcasting: activate');
+            channel.postMessage({ type: 'activate' });
         });
 
-        // FEATURE 5: Mode Toggles
         setHatModeButton.addEventListener('click', () => {
-            console.log('Setting mode to HAT');
-            localStorage.setItem(STORAGE_KEY_MODE, 'hat');
+            console.log('Broadcasting: set_mode hat');
+            currentMode = 'hat';
+            channel.postMessage({ type: 'set_mode', payload: 'hat' });
         });
 
         setWheelModeButton.addEventListener('click', () => {
-            console.log('Setting mode to WHEEL');
-            localStorage.setItem(STORAGE_KEY_MODE, 'wheel');
+            console.log('Broadcasting: set_mode wheel');
+            currentMode = 'wheel';
+            channel.postMessage({ type: 'set_mode', payload: 'wheel' });
         });
 
+        /**
+         * NEW: Listen for the display page
+         * When the display page loads, it will "request_state".
+         * This control panel will respond by sending its current state.
+         */
+        channel.onmessage = (event) => {
+            if (event.data.type === 'request_state') {
+                console.log('Display panel connected, sending current state...');
+                // Send current tricks
+                channel.postMessage({ type: 'update_tricks', payload: tricks });
+                // Send current mode
+                channel.postMessage({ type: 'set_mode', payload: currentMode });
+            }
+        };
 
         // Initial load
         window.addEventListener('DOMContentLoaded', loadState);
