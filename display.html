@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Magic App Display</title>
     <style>
+        /* CSS is identical to the previous version... */
         body {
             background-color: transparent;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -27,9 +28,6 @@
             align-items: center;
             justify-content: center;
         }
-
-        /* REMOVED: Mode Toggles are gone */
-
         #hat-stage, #wheel-stage {
             display: none;
             width: 100%;
@@ -40,8 +38,6 @@
         #hat-stage.active, #wheel-stage.active {
             display: flex;
         }
-
-        /* === MODE 1: MAGIC HAT === */
         #hat-container {
             position: relative;
             width: 300px;
@@ -85,8 +81,6 @@
             25% { transform: rotate(-5deg); }
             75% { transform: rotate(5deg); }
         }
-
-        /* === MODE 2: SPINNING WHEEL === */
         #wheel-stage {
             flex-direction: column;
         }
@@ -111,8 +105,6 @@
             width: 100%;
             height: 100%;
         }
-        
-        /* Modal for wheel result */
         #result-modal {
             position: fixed;
             top: 0; left: 0;
@@ -152,7 +144,6 @@
             font-size: 1.2em;
             margin: 0;
         }
-
     </style>
 </head>
 <body>
@@ -187,11 +178,7 @@
     </div>
 
     <script>
-        // === STATE ===
-        const STORAGE_KEY_TRICKS = 'magic_tricks';
-        const STORAGE_KEY_MODE = 'magic_mode';
-        const STORAGE_KEY_ACTIVATE = 'magic_activate';
-        
+        // === STATE (Stateless!) ===
         let currentTricks = [];
         let currentMode = 'hat';
         let isSpinning = false;
@@ -210,8 +197,11 @@
         
         let currentAngle = 0;
         let animationId = null;
+        
+        // NEW: Connect to the Broadcast Channel
+        const channel = new BroadcastChannel('magic_app');
 
-        // === WEIGHTED LOGIC ===
+        // === WEIGHTED LOGIC (Same as before) ===
         function getWeightedPool() {
             const weightedPool = [];
             if (!currentTricks || currentTricks.length === 0) return [];
@@ -234,7 +224,7 @@
             return pool[randomIndex];
         }
 
-        // === MODE SWITCHING ===
+        // === MODE SWITCHING (Now called by broadcast) ===
         function setMode(mode) {
             console.log("Setting mode to:", mode);
             currentMode = mode;
@@ -248,7 +238,7 @@
             }
         }
 
-        // === HAT LOGIC ===
+        // === HAT LOGIC (Now called by broadcast) ===
         function triggerHat() {
             if (isHatActive) return;
             isHatActive = true;
@@ -262,13 +252,10 @@
                 isHatActive = false;
             }, 10000);
         }
-        hatContainer.addEventListener('click', triggerHat);
+        // Local click trigger is still useful for testing
+        hatContainer.addEventListener('click', triggerHat); 
 
-        // === WHEEL LOGIC ===
-        
-        /**
-         * FIX 1: Start at 0 (3 o'clock) for simpler math.
-         */
+        // === WHEEL LOGIC (Now called by broadcast) ===
         function getWheelSlices() {
             if (!currentTricks || currentTricks.length === 0) {
                 return { slices: [{ name: "Add Tricks!", start: 0, end: 2 * Math.PI, color: '#666' }], totalTickets: 1 };
@@ -276,9 +263,7 @@
             
             const slices = [];
             const totalTickets = currentTricks.reduce((sum, trick) => sum + (1 + trick.votes), 0);
-            
-            let currentStart = 0; // Start at 0 (3 o'clock)
-
+            let currentStart = 0;
             const colors = currentTricks.map((_, i) => `hsl(${i * (360 / currentTricks.length)}, 70%, 60%)`);
 
             currentTricks.forEach((trick, i) => {
@@ -295,9 +280,6 @@
             return { slices, totalTickets };
         }
 
-        /**
-         * FIX 2: Draw text with rotation AND outline.
-         */
         function drawWheel(rotation = 0) {
             const { slices } = getWheelSlices();
             const radius = canvas.width / 2;
@@ -321,35 +303,25 @@
 
                 // Draw text
                 ctx.save();
-                // Rotate context to the middle of the slice
                 const textAngle = slice.start + (slice.end - slice.start) / 2;
                 ctx.rotate(textAngle);
                 
-                // Only draw text if slice is big enough
                 if ((slice.end - slice.start) > 0.1) {
                     const text = slice.name;
                     ctx.font = 'bold 16px Arial';
                     ctx.textAlign = 'right';
                     ctx.textBaseline = 'middle';
-                    
-                    // Draw a black outline
                     ctx.strokeStyle = 'black';
                     ctx.lineWidth = 4;
                     ctx.strokeText(text, radius - 15, 0);
-                    
-                    // Draw the white text on top
                     ctx.fillStyle = 'white';
                     ctx.fillText(text, radius - 15, 0);
                 }
                 ctx.restore();
             });
-            
             ctx.restore();
         }
 
-        /**
-         * FIX 1: Updated spin logic
-         */
         function spinWheel() {
             if (isSpinning) return;
             isSpinning = true;
@@ -363,29 +335,18 @@
             
             const { slices } = getWheelSlices();
             const winnerSlice = slices.find(s => s.id === winner.id);
-
-            // Calculate target angle
             const sliceAngle = winnerSlice.end - winnerSlice.start;
             const randomOffset = Math.random() * sliceAngle * 0.8 + (sliceAngle * 0.1);
-            
-            // The middle of the winning angle (e.g., 0.2 rad)
             const targetAngleInSlice = winnerSlice.start + randomOffset;
-            
-            // Where the pointer is (12 o'clock = 270 deg or 3*PI/2)
             const pointerAngle = (3 * Math.PI) / 2;
-            
-            // The final rotation needed to align the slice with the pointer
             const finalTargetRotation = pointerAngle - targetAngleInSlice;
-            
             const fullSpins = 5 * (2 * Math.PI);
             const totalRotation = fullSpins + finalTargetRotation;
             
             let startTime = null;
             const duration = 5000;
 
-            function easeOutCubic(t) {
-                return (--t) * t * t + 1;
-            }
+            function easeOutCubic(t) { return (--t) * t * t + 1; }
 
             function animate(timestamp) {
                 if (!startTime) startTime = timestamp;
@@ -401,7 +362,6 @@
                 
                 const t = elapsed / duration;
                 const easedT = easeOutCubic(t);
-                
                 currentAngle = easedT * totalRotation;
                 drawWheel(currentAngle);
                 
@@ -416,66 +376,53 @@
         function showWinner(winner) {
             resultName.textContent = winner.name;
             resultModal.classList.add('show');
-            
             setTimeout(() => {
                 resultModal.classList.remove('show');
             }, 10000);
         }
-
+        
+        // Local click trigger is still useful for testing
         wheelContainer.addEventListener('click', spinWheel);
         resultModal.addEventListener('click', () => resultModal.classList.remove('show'));
 
 
-        // === LOCALSTORAGE SYNC (RECEIVER) ===
-        function onStorageChange(e) {
-            // 1. Listen for Trick List changes
-            if (e.key === STORAGE_KEY_TRICKS) {
-                console.log('Tricks changed, updating display...');
-                loadStateFromStorage(e.newValue);
-            }
-            
-            // 2. FEATURE 5: Listen for Mode changes
-            if (e.key === STORAGE_KEY_MODE) {
-                console.log('Mode changed, updating display...');
-                setMode(e.newValue);
-            }
-            
-            // 3. FEATURE 4: Listen for Activate command
-            if (e.key === STORAGE_KEY_ACTIVATE) {
-                console.log('Activate command received!');
-                if (currentMode === 'hat') {
-                    triggerHat();
-                } else {
-                    spinWheel();
-                }
-            }
-        }
-
+        // === NEW: BroadcastChannel Receiver ===
+        
         /**
-         * Loads and parses the state, then updates the UI.
+         * This is the main listener. It waits for messages from 'control.html'
+         * and routes them to the correct function.
          */
-        function loadStateFromStorage(storageValue) {
-            if (storageValue) {
-                currentTricks = JSON.parse(storageValue);
-            } else {
-                currentTricks = [];
-            }
+        channel.onmessage = (event) => {
+            const { type, payload } = event.data;
             
-            if (currentMode === 'wheel') {
-                drawWheel(currentAngle);
+            switch(type) {
+                case 'update_tricks':
+                    console.log('Tricks received:', payload);
+                    currentTricks = payload;
+                    if (currentMode === 'wheel') {
+                        drawWheel(currentAngle);
+                    }
+                    break;
+                case 'set_mode':
+                    console.log('Mode set:', payload);
+                    setMode(payload);
+                    break;
+                case 'activate':
+                    console.log('Activate command received');
+                    if (currentMode === 'hat') {
+                        triggerHat();
+                    } else {
+                        spinWheel();
+                    }
+                    break;
             }
-        }
+        };
 
-        // Listen for changes from other tabs
-        window.addEventListener('storage', onStorageChange);
-        
         // --- Initial Load ---
-        // 1. Load tricks
-        loadStateFromStorage(localStorage.getItem(STORAGE_KEY_TRICKS));
-        
-        // 2. Load mode
-        const initialMode = localStorage.getItem(STORAGE_KEY_MODE) || 'hat';
-        setMode(initialMode);
+        // NEW: When this page (display.html) loads, it sends a message
+        // asking the control panel for the current state.
+        console.log('Display panel loaded, requesting state...');
+        channel.postMessage({ type: 'request_state' });
 
     </script>
 </body>
