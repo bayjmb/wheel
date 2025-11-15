@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Magic App Display</title>
+    <style>
+        body {
+            background-color: transparent;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: white;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+        }
+        .stage-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* REMOVED: Mode Toggles are gone */
+
+        #hat-stage, #wheel-stage {
+            display: none;
+            width: 100%;
+            height: 100%;
+            align-items: center;
+            justify-content: center;
+        }
+        #hat-stage.active, #wheel-stage.active {
+            display: flex;
+        }
+
+        /* === MODE 1: MAGIC HAT === */
+        #hat-container {
+            position: relative;
+            width: 300px;
+            height: 300px;
+            cursor: pointer;
+        }
+        #hat-svg {
+            width: 100%;
+            height: 100%;
+            filter: drop-shadow(0 5px 15px rgba(0,0,0,0.5));
+            transform-origin: bottom center;
+        }
+        #trick-billet {
+            position: absolute;
+            top: 25%;
+            left: 50%;
+            transform: translateX(-50%) scale(0.8);
+            background: #fff;
+            color: #333;
+            padding: 20px 30px;
+            border-radius: 5px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            font-size: 24px;
+            font-weight: bold;
+            text-align: center;
+            opacity: 0;
+            z-index: 10;
+            text-shadow: none;
+            transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        #hat-container.active #hat-svg {
+            animation: hat-shake 0.5s;
+        }
+        #hat-container.active #trick-billet {
+            top: -15%;
+            opacity: 1;
+            transform: translateX(-50%) scale(1);
+        }
+        @keyframes hat-shake {
+            0%, 100% { transform: rotate(0); }
+            25% { transform: rotate(-5deg); }
+            75% { transform: rotate(5deg); }
+        }
+
+        /* === MODE 2: SPINNING WHEEL === */
+        #wheel-stage {
+            flex-direction: column;
+        }
+        #wheel-pointer {
+            width: 0;
+            height: 0;
+            border-left: 25px solid transparent;
+            border-right: 25px solid transparent;
+            border-top: 40px solid #ff4136;
+            z-index: 10;
+            position: relative;
+            top: 20px;
+            filter: drop-shadow(0 2px 3px rgba(0,0,0,0.4));
+        }
+        #wheel-container {
+            width: 500px;
+            height: 500px;
+            position: relative;
+            cursor: pointer;
+        }
+        #wheel-canvas {
+            width: 100%;
+            height: 100%;
+        }
+        
+        /* Modal for wheel result */
+        #result-modal {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s;
+            z-index: 200;
+        }
+        #result-modal.show {
+            opacity: 1;
+            visibility: visible;
+        }
+        #result-modal-content {
+            background: white;
+            color: #333;
+            padding: 40px 60px;
+            border-radius: 10px;
+            text-align: center;
+            text-shadow: none;
+            transform: scale(0.8);
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        #result-modal.show #result-modal-content {
+            transform: scale(1);
+        }
+        #result-modal-content h2 {
+            font-size: 2em;
+            margin: 0 0 10px 0;
+            color: #5d4ab9;
+        }
+        #result-modal-content p {
+            font-size: 1.2em;
+            margin: 0;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="stage-container">
+        <div id="hat-stage">
+            <div id="hat-container">
+                <div id="trick-billet">Ambitious Card</div>
+                <svg id="hat-svg" viewBox="0 0 200 200">
+                  <g transform="translate(100, 100) rotate(180) translate(-100, -100)">
+                    <path d="M 30,125 C 30,120 0,130 0,140 C 0,150 30,160 30,155 L 170,155 C 170,160 200,150 200,140 C 200,130 170,120 170,125 Z" fill="#333"/>
+                    <path d="M 35,125 L 35,40 C 35,20 60,20 60,40 L 140,40 C 140,20 165,20 165,40 L 165,125 Z" fill="#222"/>
+                    <rect x="35" y="100" width="130" height="20" fill="#d9534f" rx="5"/>
+                  </g>
+                </svg>
+            </div>
+        </div>
+
+        <div id="wheel-stage">
+            <div id="wheel-pointer"></div>
+            <div id="wheel-container">
+                <canvas id="wheel-canvas" width="500" height="500"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <div id="result-modal">
+        <div id="result-modal-content">
+            <p>The trick is...</p>
+            <h2 id="result-name">Ambitious Card</h2>
+        </div>
+    </div>
+
+    <script>
+        // === STATE ===
+        const STORAGE_KEY_TRICKS = 'magic_tricks';
+        const STORAGE_KEY_MODE = 'magic_mode';
+        const STORAGE_KEY_ACTIVATE = 'magic_activate';
+        
+        let currentTricks = [];
+        let currentMode = 'hat';
+        let isSpinning = false;
+        let isHatActive = false;
+
+        // === DOM ELEMENTS ===
+        const hatStage = document.getElementById('hat-stage');
+        const wheelStage = document.getElementById('wheel-stage');
+        const hatContainer = document.getElementById('hat-container');
+        const trickBillet = document.getElementById('trick-billet');
+        const wheelContainer = document.getElementById('wheel-container');
+        const canvas = document.getElementById('wheel-canvas');
+        const ctx = canvas.getContext('2d');
+        const resultModal = document.getElementById('result-modal');
+        const resultName = document.getElementById('result-name');
+        
+        let currentAngle = 0;
+        let animationId = null;
+
+        // === WEIGHTED LOGIC ===
+        function getWeightedPool() {
+            const weightedPool = [];
+            if (!currentTricks || currentTricks.length === 0) return [];
+            
+            currentTricks.forEach(trick => {
+                const tickets = 1 + trick.votes;
+                for (let i = 0; i < tickets; i++) {
+                    weightedPool.push(trick);
+                }
+            });
+            return weightedPool;
+        }
+
+        function getWeightedWinner() {
+            const pool = getWeightedPool();
+            if (pool.length === 0) {
+                return { name: "No tricks added!", id: null };
+            }
+            const randomIndex = Math.floor(Math.random() * pool.length);
+            return pool[randomIndex];
+        }
+
+        // === MODE SWITCHING ===
+        function setMode(mode) {
+            console.log("Setting mode to:", mode);
+            currentMode = mode;
+            if (mode === 'hat') {
+                hatStage.classList.add('active');
+                wheelStage.classList.remove('active');
+            } else {
+                hatStage.classList.remove('active');
+                wheelStage.classList.add('active');
+                drawWheel(); // Redraw wheel when switching to it
+            }
+        }
+
+        // === HAT LOGIC ===
+        function triggerHat() {
+            if (isHatActive) return;
+            isHatActive = true;
+            
+            const winner = getWeightedWinner();
+            trickBillet.textContent = winner.name;
+            hatContainer.classList.add('active');
+            
+            setTimeout(() => {
+                hatContainer.classList.remove('active');
+                isHatActive = false;
+            }, 10000);
+        }
+        hatContainer.addEventListener('click', triggerHat);
+
+        // === WHEEL LOGIC ===
+        
+        /**
+         * FIX 1: Start at 0 (3 o'clock) for simpler math.
+         */
+        function getWheelSlices() {
+            if (!currentTricks || currentTricks.length === 0) {
+                return { slices: [{ name: "Add Tricks!", start: 0, end: 2 * Math.PI, color: '#666' }], totalTickets: 1 };
+            }
+            
+            const slices = [];
+            const totalTickets = currentTricks.reduce((sum, trick) => sum + (1 + trick.votes), 0);
+            
+            let currentStart = 0; // Start at 0 (3 o'clock)
+
+            const colors = currentTricks.map((_, i) => `hsl(${i * (360 / currentTricks.length)}, 70%, 60%)`);
+
+            currentTricks.forEach((trick, i) => {
+                const angle = ((1 + trick.votes) / totalTickets) * (2 * Math.PI);
+                const end = currentStart + angle;
+                slices.push({
+                    ...trick,
+                    start: currentStart,
+                    end: end,
+                    color: colors[i]
+                });
+                currentStart = end;
+            });
+            return { slices, totalTickets };
+        }
+
+        /**
+         * FIX 2: Draw text with rotation AND outline.
+         */
+        function drawWheel(rotation = 0) {
+            const { slices } = getWheelSlices();
+            const radius = canvas.width / 2;
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.save();
+            ctx.translate(radius, radius);
+            ctx.rotate(rotation);
+            
+            slices.forEach(slice => {
+                // Draw slice
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.arc(0, 0, radius, slice.start, slice.end);
+                ctx.closePath();
+                ctx.fillStyle = slice.color;
+                ctx.fill();
+                ctx.strokeStyle = '#333';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+
+                // Draw text
+                ctx.save();
+                // Rotate context to the middle of the slice
+                const textAngle = slice.start + (slice.end - slice.start) / 2;
+                ctx.rotate(textAngle);
+                
+                // Only draw text if slice is big enough
+                if ((slice.end - slice.start) > 0.1) {
+                    const text = slice.name;
+                    ctx.font = 'bold 16px Arial';
+                    ctx.textAlign = 'right';
+                    ctx.textBaseline = 'middle';
+                    
+                    // Draw a black outline
+                    ctx.strokeStyle = 'black';
+                    ctx.lineWidth = 4;
+                    ctx.strokeText(text, radius - 15, 0);
+                    
+                    // Draw the white text on top
+                    ctx.fillStyle = 'white';
+                    ctx.fillText(text, radius - 15, 0);
+                }
+                ctx.restore();
+            });
+            
+            ctx.restore();
+        }
+
+        /**
+         * FIX 1: Updated spin logic
+         */
+        function spinWheel() {
+            if (isSpinning) return;
+            isSpinning = true;
+
+            const winner = getWeightedWinner();
+            if (winner.id === null) {
+                alert(winner.name);
+                isSpinning = false;
+                return;
+            }
+            
+            const { slices } = getWheelSlices();
+            const winnerSlice = slices.find(s => s.id === winner.id);
+
+            // Calculate target angle
+            const sliceAngle = winnerSlice.end - winnerSlice.start;
+            const randomOffset = Math.random() * sliceAngle * 0.8 + (sliceAngle * 0.1);
+            
+            // The middle of the winning angle (e.g., 0.2 rad)
+            const targetAngleInSlice = winnerSlice.start + randomOffset;
+            
+            // Where the pointer is (12 o'clock = 270 deg or 3*PI/2)
+            const pointerAngle = (3 * Math.PI) / 2;
+            
+            // The final rotation needed to align the slice with the pointer
+            const finalTargetRotation = pointerAngle - targetAngleInSlice;
+            
+            const fullSpins = 5 * (2 * Math.PI);
+            const totalRotation = fullSpins + finalTargetRotation;
+            
+            let startTime = null;
+            const duration = 5000;
+
+            function easeOutCubic(t) {
+                return (--t) * t * t + 1;
+            }
+
+            function animate(timestamp) {
+                if (!startTime) startTime = timestamp;
+                const elapsed = timestamp - startTime;
+                
+                if (elapsed >= duration) {
+                    currentAngle = totalRotation;
+                    drawWheel(currentAngle);
+                    isSpinning = false;
+                    showWinner(winner);
+                    return;
+                }
+                
+                const t = elapsed / duration;
+                const easedT = easeOutCubic(t);
+                
+                currentAngle = easedT * totalRotation;
+                drawWheel(currentAngle);
+                
+                animationId = requestAnimationFrame(animate);
+            }
+            
+            currentAngle = currentAngle % (2 * Math.PI);
+            cancelAnimationFrame(animationId);
+            requestAnimationFrame(animate);
+        }
+
+        function showWinner(winner) {
+            resultName.textContent = winner.name;
+            resultModal.classList.add('show');
+            
+            setTimeout(() => {
+                resultModal.classList.remove('show');
+            }, 10000);
+        }
+
+        wheelContainer.addEventListener('click', spinWheel);
+        resultModal.addEventListener('click', () => resultModal.classList.remove('show'));
+
+
+        // === LOCALSTORAGE SYNC (RECEIVER) ===
+        function onStorageChange(e) {
+            // 1. Listen for Trick List changes
+            if (e.key === STORAGE_KEY_TRICKS) {
+                console.log('Tricks changed, updating display...');
+                loadStateFromStorage(e.newValue);
+            }
+            
+            // 2. FEATURE 5: Listen for Mode changes
+            if (e.key === STORAGE_KEY_MODE) {
+                console.log('Mode changed, updating display...');
+                setMode(e.newValue);
+            }
+            
+            // 3. FEATURE 4: Listen for Activate command
+            if (e.key === STORAGE_KEY_ACTIVATE) {
+                console.log('Activate command received!');
+                if (currentMode === 'hat') {
+                    triggerHat();
+                } else {
+                    spinWheel();
+                }
+            }
+        }
+
+        /**
+         * Loads and parses the state, then updates the UI.
+         */
+        function loadStateFromStorage(storageValue) {
+            if (storageValue) {
+                currentTricks = JSON.parse(storageValue);
+            } else {
+                currentTricks = [];
+            }
+            
+            if (currentMode === 'wheel') {
+                drawWheel(currentAngle);
+            }
+        }
+
+        // Listen for changes from other tabs
+        window.addEventListener('storage', onStorageChange);
+        
+        // --- Initial Load ---
+        // 1. Load tricks
+        loadStateFromStorage(localStorage.getItem(STORAGE_KEY_TRICKS));
+        
+        // 2. Load mode
+        const initialMode = localStorage.getItem(STORAGE_KEY_MODE) || 'hat';
+        setMode(initialMode);
+
+    </script>
+</body>
+</html>

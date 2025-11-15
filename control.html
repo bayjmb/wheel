@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Magic App Control Panel</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f4f7f6;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+            font-size: 16px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+            overflow: hidden;
+        }
+        header {
+            padding: 20px;
+            background-color: #5d4ab9;
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        header h1 {
+            margin: 0;
+            font-size: 1.5em;
+        }
+        .content {
+            padding: 20px;
+        }
+        h2 {
+            font-size: 1.2em;
+            color: #555;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+            margin-top: 0;
+        }
+        .input-group {
+            display: flex;
+            margin-bottom: 15px;
+        }
+        .input-group input, .input-group textarea {
+            flex-grow: 1;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            margin-right: 10px;
+            font-size: 1em;
+        }
+        .input-group textarea {
+            resize: vertical;
+            min-height: 80px;
+            font-family: inherit;
+        }
+        button {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            background-color: #5d4ab9;
+            color: white;
+            font-size: 1em;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        button:hover {
+            background-color: #4a3a9a;
+        }
+        button.danger {
+            background-color: #d9534f;
+        }
+        button.danger:hover {
+            background-color: #c9302c;
+        }
+        button.secondary {
+            background-color: #6c757d;
+        }
+        button.secondary:hover {
+            background-color: #5a6268;
+        }
+        button.success {
+            background-color: #28a745;
+        }
+        button.success:hover {
+            background-color: #218838;
+        }
+        #trick-list {
+            margin-top: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #eee;
+            border-radius: 4px;
+        }
+        .trick-item {
+            display: flex;
+            align-items: center;
+            padding: 12px 15px;
+            border-bottom: 1px solid #eee;
+        }
+        .trick-item:last-child {
+            border-bottom: none;
+        }
+        .trick-item .name {
+            flex-grow: 1;
+            font-weight: 500;
+        }
+        .trick-item .votes {
+            font-weight: bold;
+            margin: 0 10px;
+            min-width: 20px;
+            text-align: center;
+        }
+        .trick-item .vote-btn {
+            width: 30px;
+            height: 30px;
+            padding: 0;
+            line-height: 30px;
+            text-align: center;
+            font-weight: bold;
+            margin: 0 3px;
+        }
+        .trick-item .remove-btn {
+            width: 30px;
+            height: 30px;
+            padding: 0;
+            line-height: 30px;
+            margin-left: 10px;
+        }
+        .footer-actions {
+            padding: 20px;
+            background-color: #f9f9f9;
+            border-top: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+        }
+        .mode-controls button {
+            margin-left: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <h1>Magic App Control Panel</h1>
+            <button id="activate-button" class="success" style="font-size: 1.2em; padding: 10px 20px;">
+                ✨ Activate
+            </button>
+        </header>
+
+        <div class="content">
+            <h2>Display Mode</h2>
+            <div class="mode-controls">
+                <button id="set-hat-mode">🎩 Set Hat Mode</button>
+                <button id="set-wheel-mode">🎡 Set Wheel Mode</button>
+            </div>
+            
+            <h2 style="margin-top: 20px;">Add New Trick</h2>
+            <div class="input-group">
+                <input type="text" id="trick-input" placeholder="Enter trick name...">
+                <button id="add-button">Add</button>
+            </div>
+
+            <h2>Add Bulk Tricks</h2>
+            <div class="input-group">
+                <textarea id="trick-textarea" placeholder="Paste a list of tricks, one per line..."></textarea>
+                <button id="add-list-button">Add List</button>
+            </div>
+
+            <h2>Current Tricks</h2>
+            <div id="trick-list">
+                </div>
+        </div>
+
+        <div class="footer-actions">
+            <button id="clear-all-button" class="danger">Clear All Tricks</button>
+        </div>
+    </div>
+
+    <script>
+        // === DOM ELEMENTS ===
+        const trickInput = document.getElementById('trick-input');
+        const addButton = document.getElementById('add-button');
+        const trickTextarea = document.getElementById('trick-textarea');
+        const addListButton = document.getElementById('add-list-button');
+        const trickListDiv = document.getElementById('trick-list');
+        const clearAllButton = document.getElementById('clear-all-button');
+        const activateButton = document.getElementById('activate-button');
+        const setHatModeButton = document.getElementById('set-hat-mode');
+        const setWheelModeButton = document.getElementById('set-wheel-mode');
+
+        // === STATE ===
+        let tricks = [];
+        const STORAGE_KEY_TRICKS = 'magic_tricks';
+        const STORAGE_KEY_MODE = 'magic_mode';
+        const STORAGE_KEY_ACTIVATE = 'magic_activate';
+
+        // === CORE FUNCTIONS ===
+
+        function renderTrickList() {
+            trickListDiv.innerHTML = '';
+            if (tricks.length === 0) {
+                trickListDiv.innerHTML = '<p style="padding: 15px; text-align: center; color: #888;">No tricks added yet.</p>';
+                return;
+            }
+
+            tricks.forEach(trick => {
+                const item = document.createElement('div');
+                item.className = 'trick-item';
+                item.dataset.id = trick.id; // This will be the UUID
+
+                item.innerHTML = `
+                    <span class="name">${trick.name}</span>
+                    <button class="vote-btn secondary" data-action="vote-down">-</button>
+                    <span class="votes">${trick.votes}</span>
+                    <button class="vote-btn secondary" data-action="vote-up">+</button>
+                    <button class="remove-btn danger" data-action="remove">&times;</button>
+                `;
+                trickListDiv.appendChild(item);
+            });
+        }
+
+        /**
+         * Adds a new trick to the state.
+         * @param {string} name - The name of the trick.
+         */
+        function addTrick(name) {
+            if (!name || name.trim() === '') return;
+            tricks.push({
+                // FIX 3: Use crypto.randomUUID() for a guaranteed unique ID
+                id: crypto.randomUUID(),
+                name: name.trim(),
+                votes: 0
+            });
+        }
+        
+        /**
+         * Saves the current 'tricks' array to localStorage.
+         */
+        function syncState() {
+            localStorage.setItem(STORAGE_KEY_TRICKS, JSON.stringify(tricks));
+            console.log('Trick state synced');
+        }
+
+        /**
+         * Loads state from localStorage on page load.
+         */
+        function loadState() {
+            const storedTricks = localStorage.getItem(STORAGE_KEY_TRICKS);
+            if (storedTricks) {
+                tricks = JSON.parse(storedTricks);
+            }
+            renderTrickList();
+        }
+
+        /**
+         * Helper to find a trick's index by its ID.
+         */
+        function findTrickIndexById(id) {
+            // FIX 3: Use strict equality (===) since UUIDs are strings
+            return tricks.findIndex(trick => trick.id === id);
+        }
+
+        // === EVENT LISTENERS ===
+
+        addButton.addEventListener('click', () => {
+            addTrick(trickInput.value);
+            trickInput.value = '';
+            renderTrickList();
+            syncState();
+        });
+        trickInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                addButton.click();
+            }
+        });
+
+        addListButton.addEventListener('click', () => {
+            const list = trickTextarea.value.split('\n');
+            list.forEach(name => addTrick(name));
+            trickTextarea.value = '';
+            renderTrickList();
+            syncState();
+        });
+
+        // Handle clicks on the trick list (Vote Up/Down, Remove)
+        trickListDiv.addEventListener('click', (e) => {
+            const action = e.target.dataset.action;
+            if (!action) return;
+
+            const item = e.target.closest('.trick-item');
+            if (!item) return; // Click was not on an item
+            
+            const id = item.dataset.id;
+            const index = findTrickIndexById(id);
+            if (index === -1) {
+                console.error("Could not find trick with ID:", id);
+                return; // ID not found, do nothing
+            }
+
+            switch (action) {
+                case 'vote-up':
+                    tricks[index].votes++;
+                    break;
+                case 'vote-down':
+                    if (tricks[index].votes > 0) {
+                        tricks[index].votes--;
+                    }
+                    break;
+                case 'remove':
+                    tricks.splice(index, 1);
+                    break;
+            }
+
+            renderTrickList();
+            syncState();
+        });
+
+        clearAllButton.addEventListener('click', () => {
+            if (confirm('Are you sure you want to remove ALL tricks?')) {
+                tricks = [];
+                renderTrickList();
+                syncState();
+            }
+        });
+
+        // --- NEW: Control Listeners ---
+
+        // FEATURE 4: Activate Button
+        activateButton.addEventListener('click', () => {
+            console.log('Activating display...');
+            // Set a timestamp to signal a "new" event
+            localStorage.setItem(STORAGE_KEY_ACTIVATE, Date.now());
+        });
+
+        // FEATURE 5: Mode Toggles
+        setHatModeButton.addEventListener('click', () => {
+            console.log('Setting mode to HAT');
+            localStorage.setItem(STORAGE_KEY_MODE, 'hat');
+        });
+
+        setWheelModeButton.addEventListener('click', () => {
+            console.log('Setting mode to WHEEL');
+            localStorage.setItem(STORAGE_KEY_MODE, 'wheel');
+        });
+
+
+        // Initial load
+        window.addEventListener('DOMContentLoaded', loadState);
+
+    </script>
+</body>
+</html>
